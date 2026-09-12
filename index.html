@@ -111,6 +111,7 @@
         
         .product-card.sold-out { opacity: 0.6; filter: grayscale(1); background: #F3F4F6; pointer-events: none; }
         
+        /* Cập nhật UI Nút Size gọn gàng */
         .size-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 6px; width: 100%; margin-top: auto;}
         .btn-size { padding: 8px 4px; background: var(--cam-nhat); color: var(--cam-dam); border: 1px solid rgba(255,102,0,0.2); border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.72em; transition: 0.2s; white-space: nowrap; line-height: 1.3;}
         .btn-size:hover { background: var(--cam-chinh); color: white; border-color: var(--cam-chinh); }
@@ -272,6 +273,7 @@
             .sidebar-menu li.active i { color: var(--cam-chinh) !important; }
             .sidebar-menu li span { display: block !important; font-size: 0.65em; font-weight: 700; white-space: nowrap; color: inherit; letter-spacing: 0.2px;}
             
+            /* LOẠI BỎ !important ĐỂ JS CÓ THỂ ĐIỀU KHIỂN ẨN/HIỆN CHẤM ĐỎ CỦA CHUÔNG */
             .badge { top: 0px; right: calc(50% - 22px); width: 18px; height: 18px; font-size: 0.6em; padding: 0; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white;}
 
             .main-content { 
@@ -338,13 +340,16 @@
             #print-section { display: block !important; position: static; width: 100%; color: black; font-size: 14px; padding: 5px; }
             .thermal-print-wrapper { width: 100%; margin: 0 auto; }
             .thermal-print-wrapper p { margin: 2px 0; }
+            /* Không in icon Google Map ra giấy vì trên giấy không bấm được */
             .no-print-icon { display: none !important; }
         }
     </style>
 </head>
 <body>
 
+    <!-- THẺ ÂM THANH MỚI: Tự động tải file chuong.mp3 và chuong2.mp3 -->
     <audio id="alert-sound" src="chuong.mp3" preload="auto"></audio>
+    <audio id="alert-sound-2" src="chuong2.mp3" preload="auto"></audio>
 
     <div id="splash-screen">
         <img src="icon.png" alt="Loading...">
@@ -388,8 +393,10 @@
             <div class="pos-layout">
                 <div class="pos-products" id="render-products"></div>
                 <div class="pos-cart">
+                    <!-- Form nhập của thu ngân -->
                     <input type="text" class="cashier-input" id="cashier-name" placeholder="Tên thu ngân (VD: Yến Nhi)" style="margin-bottom: 15px;">
                     
+                    <!-- Form nhập dành riêng cho Khách (ẩn mặc định, chỉ hiện khi có đuôi ?mode=khach) -->
                     <div id="customer-info-fields" style="display: none; flex-direction: column; gap: 10px; margin-bottom: 15px;">
                         <input type="text" class="cashier-input" id="cust-name" placeholder="Tên người nhận (* Bắt buộc)" style="margin-bottom: 0;">
                         <input type="tel" class="cashier-input" id="cust-phone" placeholder="Số điện thoại (* Bắt buộc)" style="margin-bottom: 0;">
@@ -685,6 +692,9 @@
         const urlParams = new URLSearchParams(window.location.search);
         const isCustomerMode = urlParams.get('mode') === 'khach';
 
+        // ==========================================
+        // --- CẤP QUYỀN ÂM THANH & THÔNG BÁO PUSH ---
+        // ==========================================
         let isAudioUnlocked = false;
         
         function unlockAudioAndNotifications() {
@@ -698,12 +708,19 @@
 
             try {
                 const audio = document.getElementById('alert-sound');
+                const audio2 = document.getElementById('alert-sound-2');
                 if(audio) {
                     audio.play().then(() => {
                         audio.pause();
                         audio.currentTime = 0;
                         isAudioUnlocked = true;
-                    }).catch(e => console.log("Lỗi cấp quyền audio:", e));
+                    }).catch(e => console.log("Lỗi cấp quyền audio 1:", e));
+                }
+                if(audio2) {
+                    audio2.play().then(() => {
+                        audio2.pause();
+                        audio2.currentTime = 0;
+                    }).catch(e => console.log("Lỗi cấp quyền audio 2:", e));
                 }
             } catch(e) {}
         }
@@ -711,12 +728,24 @@
         document.addEventListener('click', unlockAudioAndNotifications, { once: true });
         document.addEventListener('touchstart', unlockAudioAndNotifications, { once: true });
 
+        // Phát file âm thanh 1, sau khi xong tự động nối tiếp file 2
         function playAlertSound() {
             try {
                 const audio = document.getElementById('alert-sound');
+                const audio2 = document.getElementById('alert-sound-2');
+                
                 if(audio) {
                     audio.currentTime = 0;
-                    audio.play().catch(e => console.log("Không thể phát âm thanh:", e));
+                    
+                    // Sự kiện kích hoạt khi file 1 chạy xong
+                    audio.onended = function() {
+                        if (audio2) {
+                            audio2.currentTime = 0;
+                            audio2.play().catch(e => console.log("Không thể phát âm thanh 2:", e));
+                        }
+                    };
+                    
+                    audio.play().catch(e => console.log("Không thể phát âm thanh 1:", e));
                 }
             } catch(e) { console.error("Lỗi âm thanh:", e); }
         }
