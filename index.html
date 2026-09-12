@@ -692,9 +692,6 @@
         const urlParams = new URLSearchParams(window.location.search);
         const isCustomerMode = urlParams.get('mode') === 'khach';
 
-        // ==========================================
-        // --- CẤP QUYỀN ÂM THANH & THÔNG BÁO PUSH ---
-        // ==========================================
         let isAudioUnlocked = false;
         
         function unlockAudioAndNotifications() {
@@ -728,7 +725,7 @@
         document.addEventListener('click', unlockAudioAndNotifications, { once: true });
         document.addEventListener('touchstart', unlockAudioAndNotifications, { once: true });
 
-        // Phát file âm thanh 1, sau khi xong tự động nối tiếp file 2
+        // Cập nhật hàm playAlertSound bằng setInterval cho độ chính xác cao
         function playAlertSound() {
             try {
                 const audio = document.getElementById('alert-sound');
@@ -736,11 +733,29 @@
                 
                 if(audio) {
                     audio.currentTime = 0;
+                    if(audio2) {
+                        audio2.currentTime = 0;
+                        audio2.pause(); // Reset file 2
+                    }
                     
-                    // Sự kiện kích hoạt khi file 1 chạy xong
+                    let isAudio2Played = false;
+                    
+                    // Kiểm tra liên tục độ dài file để phát file 2 ngay trước khi file 1 tắt (bù độ trễ)
+                    const checkInterval = setInterval(() => {
+                        if (audio2 && !isAudio2Played && audio.duration > 0) {
+                            // Phát ngay khi file 1 còn 0.15 giây cuối cùng
+                            if ((audio.duration - audio.currentTime) <= 0.15) {
+                                isAudio2Played = true;
+                                audio2.play().catch(e => console.log("Không thể phát âm thanh 2:", e));
+                                clearInterval(checkInterval);
+                            }
+                        }
+                    }, 20);
+
+                    // Backup trường hợp setInterval bị lỡ
                     audio.onended = function() {
-                        if (audio2) {
-                            audio2.currentTime = 0;
+                        clearInterval(checkInterval);
+                        if (audio2 && !isAudio2Played) {
                             audio2.play().catch(e => console.log("Không thể phát âm thanh 2:", e));
                         }
                     };
@@ -1021,6 +1036,7 @@
             } catch(e) { alert("Lỗi khi lưu đơn hàng lên cloud: " + e.message); }
         }
 
+        // --- CẬP NHẬT CƯỠNG CHẾ CSS CHO SỐ ĐẾM (BADGE) ---
         function updateKitchenBadge() {
             const count = pendingOrders.length;
             const sb = document.getElementById('sidebar-badge');
