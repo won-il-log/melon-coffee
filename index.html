@@ -284,13 +284,15 @@
             
             .tab-pane::after { display: none !important; }
             
-            .pos-layout { flex-direction: column; gap: 15px; height: auto !important; overflow: visible; padding-bottom: calc(95px + env(safe-area-inset-bottom)); }
-            .pos-products { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+            /* BỌC THÉP FLEXBOX TRÊN MOBILE ĐỂ KHÔNG BAO GIỜ BỊ ẨN MÓN */
+            .pos-layout { flex-direction: column; gap: 15px; height: auto !important; overflow: visible; padding-bottom: calc(95px + env(safe-area-inset-bottom)); display: flex !important; }
+            .pos-products { flex: none !important; max-height: none !important; overflow: visible !important; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
             
             .pos-cart { 
                 position: static; width: 100%; height: auto; min-width: 0; 
                 box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
                 margin-bottom: 20px;
+                flex: none !important;
             }
             .cart-items { max-height: 250px; }
 
@@ -674,8 +676,17 @@
         let tempEditBill = null; 
         let currentPreviewBillId = null;
 
-        const formatMoney = (amount) => amount.toLocaleString('vi-VN') + "đ";
-        const formatK = (amount) => (amount / 1000) + "k"; 
+        // Bọc thép hàm format tiền để không bao giờ bị sập (lỗi trắng trang)
+        const formatMoney = (amount) => {
+            if (amount === undefined || amount === null || amount === '') return "0đ";
+            const num = Number(amount);
+            return (isNaN(num) ? 0 : num).toLocaleString('vi-VN') + "đ";
+        };
+        const formatK = (amount) => {
+            if (amount === undefined || amount === null || amount === '') return "0k";
+            const num = Number(amount);
+            return (isNaN(num) ? 0 : (num / 1000)) + "k";
+        };
 
         function getCustomDateString(d) { return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`; }
         function getCustomTimeString(d) { return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; }
@@ -692,6 +703,9 @@
         const urlParams = new URLSearchParams(window.location.search);
         const isCustomerMode = urlParams.get('mode') === 'khach';
 
+        // ==========================================
+        // --- CẤP QUYỀN ÂM THANH & THÔNG BÁO PUSH ---
+        // ==========================================
         let isAudioUnlocked = false;
         
         function unlockAudioAndNotifications() {
@@ -725,7 +739,7 @@
         document.addEventListener('click', unlockAudioAndNotifications, { once: true });
         document.addEventListener('touchstart', unlockAudioAndNotifications, { once: true });
 
-        // Cập nhật hàm playAlertSound bằng setInterval cho độ chính xác cao
+        // Tối ưu hóa chuông Combo 
         function playAlertSound() {
             try {
                 const audio = document.getElementById('alert-sound');
@@ -735,24 +749,22 @@
                     audio.currentTime = 0;
                     if(audio2) {
                         audio2.currentTime = 0;
-                        audio2.pause(); // Reset file 2
+                        audio2.pause(); 
                     }
                     
                     let isAudio2Played = false;
                     
-                    // Kiểm tra liên tục độ dài file để phát file 2 ngay trước khi file 1 tắt (bù độ trễ)
                     const checkInterval = setInterval(() => {
                         if (audio2 && !isAudio2Played && audio.duration > 0) {
-                            // Phát ngay khi file 1 còn 0.15 giây cuối cùng
-                            if ((audio.duration - audio.currentTime) <= 0.15) {
+                            // Hạ còn 0.05s để nối tiếp cực gắt
+                            if ((audio.duration - audio.currentTime) <= 0.05) {
                                 isAudio2Played = true;
                                 audio2.play().catch(e => console.log("Không thể phát âm thanh 2:", e));
                                 clearInterval(checkInterval);
                             }
                         }
-                    }, 20);
+                    }, 10);
 
-                    // Backup trường hợp setInterval bị lỡ
                     audio.onended = function() {
                         clearInterval(checkInterval);
                         if (audio2 && !isAudio2Played) {
@@ -784,9 +796,13 @@
         });
 
         onSnapshot(collection(db, "melon_products"), (snapshot) => {
-            products = [];
-            snapshot.forEach(doc => products.push({ id: doc.id, ...doc.data() }));
-            renderMenu(); renderManageList(); renderRecipes(); populateEditProductDropdown();
+            try {
+                products = [];
+                snapshot.forEach(doc => products.push({ id: doc.id, ...doc.data() }));
+                renderMenu(); renderManageList(); renderRecipes(); populateEditProductDropdown();
+            } catch (e) {
+                console.error("Lỗi tải món:", e);
+            }
         });
 
         let previousPendingIds = new Set();
@@ -813,30 +829,42 @@
             bills.sort((a,b) => a.dateObj - b.dateObj);
             previousPendingIds = currentPendingIds;
             
+            // Dùng Try-Catch chống lỗi sập màn hình
             try { renderHistory(); } catch(e) { console.error(e); }
             try { renderStats(); } catch(e) { console.error(e); }
             try { updateKitchenBadge(); } catch(e) { console.error(e); }
             
             if(document.getElementById('kitchen-modal').style.display === 'flex') window.openKitchenModal();
 
+            // Nếu máy Thu ngân nhận đơn mới
             if (!isFirstLoad && hasNewOrder && !isCustomerMode) {
+                // 1. Rung máy Android
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]); 
                 
+                // 2. Phát âm thanh
                 playAlertSound();
+                
+                // 3. Hiện Popup thông báo của Web
                 window.showKitchenToast();
 
+                // 4. Bắn Notification lên hệ điều hành
                 if ("Notification" in window && Notification.permission === "granted" && newOrderData) {
                     let totalCups = newOrderData.items ? newOrderData.items.reduce((s, i) => s + (i.qty || 0), 0) : 0;
                     let bodyText = `Khách: ${newOrderData.custName || 'Tại quầy'}\nSố lượng: ${totalCups} ly`;
                     
                     try {
-                        let notification = new Notification('Mê Lôn: Có đơn mới!', { 
-                            body: bodyText, 
-                            icon: 'icon.png',
-                            vibrate: [200, 100, 200, 100, 400] 
+                        navigator.serviceWorker.ready.then(function(registration) {
+                            registration.showNotification('Mê Lôn: Có đơn mới!', {
+                                body: bodyText,
+                                icon: 'icon.png',
+                                vibrate: [200, 100, 200, 100, 400],
+                                tag: 'new-order'
+                            });
+                        }).catch(function() {
+                            new Notification('Mê Lôn: Có đơn mới!', { body: bodyText, icon: 'icon.png' });
                         });
-                        notification.onclick = function() { window.focus(); };
                     } catch(e) {
-                        console.log("Lỗi tạo thông báo:", e);
+                        new Notification('Mê Lôn: Có đơn mới!', { body: bodyText, icon: 'icon.png' });
                     }
                 }
             }
